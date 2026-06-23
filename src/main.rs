@@ -6,7 +6,11 @@ pub mod server;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    // Write all logs to stderr so we don't corrupt stdout JSON-RPC
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
+        
     tracing::info!("Starting CodeMemory MCP Server...");
 
     let args: Vec<String> = std::env::args().collect();
@@ -16,9 +20,9 @@ async fn main() -> anyhow::Result<()> {
     }
     let target_path = &args[1];
 
-    // Setup DB
-    let db_path = ".codememory.db";
-    let conn = db::connection::init(db_path)?;
+    // Setup DB inside the target path
+    let db_path = std::path::Path::new(target_path).join(".codememory.db");
+    let conn = db::connection::init(db_path.to_str().unwrap_or(".codememory.db"))?;
     tracing::info!("SQLite Database connected and schema applied.");
 
     // Run Indexer
