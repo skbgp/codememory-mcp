@@ -109,9 +109,37 @@ If a `codememory-mcp-executable` file is already present in the project root, it
 
 ## Configuration
 
+CodeMemory is a standard MCP server that communicates over stdio. Most MCP-compatible apps have a built-in UI to add servers — you just need two pieces of information:
+
+- **Command:** the absolute path to the `codememory-mcp` binary (or `codememory-mcp-executable` if you have the pre-built one)
+- **Arguments:** the absolute path to the project folder you want to index
+
+### Antigravity IDE
+
+Open the app and go to **Settings > MCP Servers > Add Server**. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Name | `codememory` |
+| Command | `/absolute/path/to/codememory-mcp-executable` |
+| Arguments | `/absolute/path/to/your/project` |
+
+Alternatively, you can edit the config file manually at `~/.gemini/antigravity-ide/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codememory": {
+      "command": "/absolute/path/to/codememory-mcp-executable",
+      "args": ["/absolute/path/to/your/project"]
+    }
+  }
+}
+```
+
 ### Claude Desktop
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Open **Settings > Developer > Edit Config**, or manually edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -126,7 +154,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ### Cursor
 
-Add to `.cursor/mcp.json` in your project root:
+Open **Settings > MCP** and click **Add MCP Server**, or add to `.cursor/mcp.json` in your project root:
 
 ```json
 {
@@ -139,22 +167,11 @@ Add to `.cursor/mcp.json` in your project root:
 }
 ```
 
-### Antigravity IDE
+### Any Other MCP Client
 
-Edit `~/.gemini/antigravity-ide/mcp_config.json`:
+Any app that supports the MCP standard can connect. You just need to point it at the binary with the project path as the first argument. The server communicates over stdin/stdout using JSON-RPC.
 
-```json
-{
-  "mcpServers": {
-    "codememory": {
-      "command": "/absolute/path/to/codememory-mcp-executable",
-      "args": ["/absolute/path/to/your/project"]
-    }
-  }
-}
-```
-
-After adding the config, restart the app. CodeMemory will automatically index the project on first launch (takes 1-2 seconds for most codebases) and start serving tool calls.
+After connecting, restart the app. CodeMemory will automatically index the project on first launch (takes 1-2 seconds for most codebases) and start serving tool calls.
 
 ---
 
