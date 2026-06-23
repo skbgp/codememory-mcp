@@ -32,7 +32,7 @@ impl TreeSitterParser {
             "ts" | "tsx" | "js" | "jsx" => (
                 tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
                 "(function_declaration name: (identifier) @name) @symbol
-                 (class_declaration name: (identifier) @name) @symbol
+                 (class_declaration name: (type_identifier) @name) @symbol
                  (method_definition name: (property_identifier) @name) @symbol"
             ),
             _ => return Ok(vec![]), // Unsupported language

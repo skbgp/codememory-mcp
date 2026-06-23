@@ -2,7 +2,6 @@ pub mod core;
 pub mod db;
 pub mod parsers;
 pub mod tools;
-pub mod utils;
 pub mod server;
 
 #[tokio::main]
@@ -22,27 +21,18 @@ async fn main() -> anyhow::Result<()> {
     let conn = db::connection::init(db_path)?;
     tracing::info!("SQLite Database connected and schema applied.");
 
-    // Run Indexer test
+    // Run Indexer
     let indexer = core::indexer::ProjectIndexer::new(&conn);
     indexer.index_project(target_path)?;
 
-    // Run Search test
-    let results = tools::search::execute_search(&conn, "TreeSitter", 5)?;
-    tracing::info!("Search results for 'TreeSitter':");
-    for r in results {
-        tracing::info!("  - [{}] {} in {} (L{}-L{})", r.kind, r.symbol_name, r.file_path, r.start_line, r.end_line);
+    // Sync git history into changes table
+    if let Err(e) = core::history::sync_git_history(&conn, std::path::Path::new(target_path), 100) {
+        tracing::warn!("Git history sync skipped: {}", e);
     }
 
-    // Test Git Provider
-    let git = core::git::GitProvider::new(target_path)?;
-    tracing::info!("Current Git Branch: {}", git.current_branch()?);
-    let commits = git.recent_commits(3)?;
-    for c in commits {
-        tracing::info!("Recent Commit: {} - {}", c.hash, c.message.lines().next().unwrap_or(""));
-    }
-
-    // Start MCP Server (stdio by default)
-    // server::start().await?;
+    // Start MCP Server (stdio JSON-RPC loop)
+    tracing::info!("CodeMemory fully initialized. Listening on stdio...");
+    server::start_stdio_server(&conn, std::path::Path::new(target_path))?;
 
     Ok(())
 }

@@ -9,13 +9,14 @@ pub struct SearchResult {
     pub file_path: String,
     pub start_line: i64,
     pub end_line: i64,
+    pub project_id: String,
 }
 
 pub fn execute_search(db: &Connection, query: &str, limit: i64) -> Result<Vec<SearchResult>> {
     tracing::info!("Executing FTS5 search for: '{}'", query);
 
     let mut stmt = db.prepare_cached(
-        "SELECT s.name, s.kind, f.relative_path, s.start_line, s.end_line 
+        "SELECT s.name, s.kind, f.relative_path, s.start_line, s.end_line, f.project_id
          FROM fts_symbols fts
          JOIN symbols s ON fts.rowid = s.id
          JOIN files f ON s.file_id = f.id
@@ -24,8 +25,19 @@ pub fn execute_search(db: &Connection, query: &str, limit: i64) -> Result<Vec<Se
          LIMIT ?2"
     )?;
 
-    // Basic query transformation for FTS5 (append * for prefix matching)
-    let fts_query = format!("\"{}\"*", query.replace("\"", ""));
+    // Query transformation for FTS5
+    // Single word: prefix match ("Auth" -> "Auth"*)
+    // Multi-word: OR-joined prefix terms ("auth login" -> "auth"* OR "login"*)
+    let sanitized = query.replace("\"", "");
+    let fts_query = if sanitized.contains(' ') {
+        sanitized
+            .split_whitespace()
+            .map(|w| format!("\"{}\"*", w))
+            .collect::<Vec<_>>()
+            .join(" OR ")
+    } else {
+        format!("\"{}\"*", sanitized)
+    };
 
     let rows = stmt.query_map(rusqlite::params![fts_query, limit], |row| {
         Ok(SearchResult {
@@ -34,6 +46,7 @@ pub fn execute_search(db: &Connection, query: &str, limit: i64) -> Result<Vec<Se
             file_path: row.get(2)?,
             start_line: row.get(3)?,
             end_line: row.get(4)?,
+            project_id: row.get(5)?,
         })
     })?;
 

@@ -132,26 +132,26 @@ fn create_tables(conn: &Connection) -> Result<()> {
         );
 
         CREATE VIRTUAL TABLE IF NOT EXISTS fts_symbols USING fts5(
-            name, signature, docstring,
+            name, signature, docstring, file_path,
             content='symbols',
             content_rowid='id'
         );
 
         CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
-            INSERT INTO fts_symbols(rowid, name, signature, docstring)
-            VALUES (new.id, new.name, new.signature, new.docstring);
+            INSERT INTO fts_symbols(rowid, name, signature, docstring, file_path)
+            VALUES (new.id, new.name, new.signature, new.docstring, (SELECT relative_path FROM files WHERE id = new.file_id));
         END;
 
         CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
-            INSERT INTO fts_symbols(fts_symbols, rowid, name, signature, docstring)
-            VALUES ('delete', old.id, old.name, old.signature, old.docstring);
+            INSERT INTO fts_symbols(fts_symbols, rowid, name, signature, docstring, file_path)
+            VALUES ('delete', old.id, old.name, old.signature, old.docstring, (SELECT relative_path FROM files WHERE id = old.file_id));
         END;
 
         CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
-            INSERT INTO fts_symbols(fts_symbols, rowid, name, signature, docstring)
-            VALUES ('delete', old.id, old.name, old.signature, old.docstring);
-            INSERT INTO fts_symbols(rowid, name, signature, docstring)
-            VALUES (new.id, new.name, new.signature, new.docstring);
+            INSERT INTO fts_symbols(fts_symbols, rowid, name, signature, docstring, file_path)
+            VALUES ('delete', old.id, old.name, old.signature, old.docstring, (SELECT relative_path FROM files WHERE id = old.file_id));
+            INSERT INTO fts_symbols(rowid, name, signature, docstring, file_path)
+            VALUES (new.id, new.name, new.signature, new.docstring, (SELECT relative_path FROM files WHERE id = new.file_id));
         END;
 
         CREATE TABLE IF NOT EXISTS symbol_embeddings (

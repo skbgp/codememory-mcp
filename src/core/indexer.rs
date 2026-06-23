@@ -36,7 +36,7 @@ impl<'a> ProjectIndexer<'a> {
             .git_ignore(true)
             .build();
 
-        let mut tx = self.db.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
         let mut parser = crate::parsers::tree_sitter::TreeSitterParser::new();
 
         for result in walker {
@@ -60,8 +60,23 @@ impl<'a> ProjectIndexer<'a> {
     }
 
     fn index_file(&self, tx: &rusqlite::Transaction, project_id: &str, full_path: &Path, rel_path: &Path, parser: &mut crate::parsers::tree_sitter::TreeSitterParser) -> Result<()> {
-        // Read content and hash
-        let content = std::fs::read_to_string(full_path).unwrap_or_default();
+        // 1. Check size before reading (skip > 500KB)
+        if let Ok(metadata) = std::fs::metadata(full_path) {
+            if metadata.len() > 500_000 {
+                tracing::debug!("Skipping large file: {:?}", rel_path);
+                return Ok(());
+            }
+        }
+
+        // Read content and hash (skips non-UTF8 binary files)
+        let content = match std::fs::read_to_string(full_path) {
+            Ok(c) => c,
+            Err(_) => {
+                tracing::debug!("Skipping non-UTF8/binary file: {:?}", rel_path);
+                return Ok(());
+            }
+        };
+        
         let size_bytes = content.len() as i64;
         let line_count = content.lines().count() as i64;
         let content_hash = hex::encode(sha2::Sha256::digest(content.as_bytes()));
@@ -81,6 +96,14 @@ impl<'a> ProjectIndexer<'a> {
 
         tracing::info!("Indexing file: {:?}", rel_path);
 
+        let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let language = match ext {
+            "rs" => "rust",
+            "py" => "python",
+            "ts" | "tsx" | "js" | "jsx" => "typescript",
+            _ => "unknown",
+        };
+
         tx.execute(
             "INSERT INTO files (id, project_id, relative_path, language, size_bytes, line_count, content_hash, last_indexed)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%s','now'))
@@ -93,7 +116,7 @@ impl<'a> ProjectIndexer<'a> {
                 file_id,
                 project_id,
                 rel_path.to_string_lossy(),
-                "unknown", // To be determined by Tree-sitter
+                language,
                 size_bytes,
                 line_count,
                 content_hash
@@ -104,6 +127,9 @@ impl<'a> ProjectIndexer<'a> {
         let symbols = parser.parse_file(full_path, &content)?;
 
         // 3. Store symbols
+        // First delete any existing symbols for this file to prevent duplicates on update
+        tx.execute("DELETE FROM symbols WHERE file_id = ?1", rusqlite::params![file_id])?;
+
         let mut stmt_sym = tx.prepare_cached(
             "INSERT INTO symbols (file_id, project_id, name, kind, start_line, end_line)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
@@ -120,7 +146,69 @@ impl<'a> ProjectIndexer<'a> {
             ])?;
         }
 
-        // TODO: 4. Store imports
+        // 4. Extract TODOs and FIXMEs
+        tx.execute("DELETE FROM todos WHERE file_id = ?1", rusqlite::params![file_id])?;
+        {
+            let mut todo_stmt = tx.prepare_cached(
+                "INSERT INTO todos (project_id, file_id, line_number, content) VALUES (?1, ?2, ?3, ?4)"
+            )?;
+            for (i, line) in content.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.contains("TODO:") || trimmed.contains("FIXME:") || trimmed.contains("HACK:") {
+                    todo_stmt.execute(rusqlite::params![
+                        project_id,
+                        file_id,
+                        (i + 1) as i64,
+                        trimmed.to_string()
+                    ])?;
+                }
+            }
+        }
+
+        // 5. Extract imports and store as file_deps
+        tx.execute("DELETE FROM file_deps WHERE source_file = ?1", rusqlite::params![file_id])?;
+        {
+            let mut dep_stmt = tx.prepare_cached(
+                "INSERT INTO file_deps (source_file, target_path, kind, project_id) VALUES (?1, ?2, ?3, ?4)"
+            )?;
+            for line in content.lines() {
+                let trimmed = line.trim();
+                let import_path = match language {
+                    "rust" => {
+                        if trimmed.starts_with("use ") {
+                            Some(trimmed.trim_start_matches("use ").trim_end_matches(';').to_string())
+                        } else { None }
+                    },
+                    "python" => {
+                        if trimmed.starts_with("import ") {
+                            Some(trimmed.trim_start_matches("import ").to_string())
+                        } else if trimmed.starts_with("from ") {
+                            Some(trimmed.to_string())
+                        } else { None }
+                    },
+                    "typescript" => {
+                        if trimmed.contains("import ") && trimmed.contains("from ") {
+                            // Extract the "from 'xxx'" part
+                            if let Some(from_idx) = trimmed.rfind("from ") {
+                                let after = &trimmed[from_idx + 5..];
+                                let cleaned = after.trim().trim_matches(|c| c == '\'' || c == '"' || c == ';');
+                                Some(cleaned.to_string())
+                            } else { None }
+                        } else { None }
+                    },
+                    _ => None,
+                };
+
+                if let Some(path) = import_path {
+                    dep_stmt.execute(rusqlite::params![
+                        file_id,
+                        path,
+                        "imports",
+                        project_id
+                    ])?;
+                }
+            }
+        }
         
         Ok(())
     }
