@@ -112,7 +112,11 @@ If a `codememory-mcp-executable` file is already present in the project root, it
 CodeMemory is a standard MCP server that communicates over stdio. Most MCP-compatible apps have a built-in UI to add servers — you just need two pieces of information:
 
 - **Command:** the absolute path to the `codememory-mcp` binary (or `codememory-mcp-executable` if you have the pre-built one)
-- **Arguments:** the absolute path to the project folder you want to index
+- **Arguments:** the path to the project folder you want to index
+
+**Tip: use `.` as the argument** instead of a hardcoded project path. This tells CodeMemory to index whatever project is currently open as the active workspace in your IDE. That way you never need to edit the config when switching projects.
+
+If you want to always index one specific project regardless of what you have open, use the full absolute path instead (e.g. `/Users/you/projects/my-app`).
 
 ### Antigravity IDE
 
@@ -122,7 +126,7 @@ Open the app and go to **Settings > MCP Servers > Add Server**. Fill in:
 |-------|-------|
 | Name | `codememory` |
 | Command | `/absolute/path/to/codememory-mcp-executable` |
-| Arguments | `/absolute/path/to/your/project` |
+| Arguments | `.` |
 
 Alternatively, you can edit the config file manually at `~/.gemini/antigravity-ide/mcp_config.json`:
 
@@ -131,7 +135,7 @@ Alternatively, you can edit the config file manually at `~/.gemini/antigravity-i
   "mcpServers": {
     "codememory": {
       "command": "/absolute/path/to/codememory-mcp-executable",
-      "args": ["/absolute/path/to/your/project"]
+      "args": ["."]
     }
   }
 }
@@ -146,7 +150,7 @@ Open **Settings > Developer > Edit Config**, or manually edit `~/Library/Applica
   "mcpServers": {
     "codememory": {
       "command": "/absolute/path/to/codememory-mcp-executable",
-      "args": ["/absolute/path/to/your/project"]
+      "args": ["."]
     }
   }
 }
