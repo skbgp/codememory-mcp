@@ -1,0 +1,4 @@
+/target
+/.codememory.db
+/.codememory.db-shm
+/.codememory.db-wal
