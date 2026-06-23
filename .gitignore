@@ -2,3 +2,5 @@
 /.codememory.db
 /.codememory.db-shm
 /.codememory.db-wal
+.DS_Store
+codememory-mcp-executable
